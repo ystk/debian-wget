@@ -3,8 +3,6 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-include /usr/share/dpatch/dpatch.make
-
 DEB_HOST_GNU_TYPE ?=$(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
 DEB_BUILD_GNU_TYPE ?=$(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
 
@@ -14,20 +12,32 @@ else
 confflags= --build $(DEB_BUILD_GNU_TYPE)
 endif
 
-config.status: patch-stamp
+CFLAGS = `dpkg-buildflags --get CFLAGS`
+CFLAGS += -DNO_SSLv2 -D_FILE_OFFSET_BITS=64 -g -Wall
+LDFLAGS = `dpkg-buildflags --get LDFLAGS`
+CPPFLAGS = `dpkg-buildflags --get CPPFLAGS`
+
+config.status: 
 	dh_testdir
+	cp /usr/share/misc/config.guess /usr/share/misc/config.sub .
 	# Add here commands to configure the package.
-	CFLAGS="$$CFLAGS -D_FILE_OFFSET_BITS=64 -O2 -g -Wall" ./configure \
+	CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" ./configure \
 			--prefix=/usr \
 			--mandir=\$${prefix}/share/man \
 			--infodir=\$${prefix}/share/info \
 			--sysconfdir=/etc \
 			--enable-ipv6 \
-			--with-ssl $(confflags)
+			--with-ssl \
+			--with-libidn $(confflags)
 
 	touch configure-stamp
 
-build: build-stamp
+build: build-arch build-indep
+
+build-arch: build-stamp
+
+build-indep: build-stamp
+
 build-stamp: config.status
 	dh_testdir
 
@@ -39,8 +49,7 @@ build-stamp: config.status
 
 	touch build-stamp
 
-clean: clean-patched unpatch
-clean-patched:
+clean: 
 	dh_testdir
 	dh_testroot
 	rm -f build-stamp configure-stamp
@@ -48,11 +57,10 @@ clean-patched:
 	# Add here commands to clean up after the build process.
 	[ ! -f Makefile ] || $(MAKE) distclean
 	#-$(MAKE) distclean
-	rm -f doc/wget.inf* po/de.gmo po/fr.gmo po/zh_CN.gmo po/wget.pot
-	-test -r /usr/share/misc/config.sub && \
-	  cp -f /usr/share/misc/config.sub config.sub
-	-test -r /usr/share/misc/config.guess && \
-	  cp -f /usr/share/misc/config.guess config.guess
+	rm -f po/*.gmo po/wget.pot po/en@boldquot.po po/en@quot.po \
+	    doc/wget.inf* doc/stamp-vti doc/version.texi \
+	    doc/sample.wgetrc.munged_for_texi_inclusion
+	rm -f config.guess config.sub
 
 	dh_clean
 

@@ -1,3 +1,133 @@
+wget (1.13.4-3) unstable; urgency=low
+
+  [ Daniel Kahn Gillmor ]
+  * Support client-side certificates when using GnuTLS. Closes: #646983
+
+  [ Noël Köthe ]
+  * thx Daniel for your work with the gnutls-client-cert patch
+  * updated Standards-Version to 3.9.3; no changes needed
+  * debian/copyright updated upstream author to Giuseppe Scrivano
+
+ -- Noël Köthe <noel@debian.org>  Mon, 09 Apr 2012 19:38:36 +0200
+
+wget (1.13.4-2) unstable; urgency=low
+
+  * added hardened build flag. thx Moritz for the patch
+    closes: Bug#654908 
+
+ -- Noël Köthe <noel@debian.org>  Fri, 13 Jan 2012 16:31:57 +0100
+
+wget (1.13.4-1) unstable; urgency=low
+
+  * new upstream release 1.13.4 from 2011-09-17
+
+ -- Noël Köthe <noel@debian.org>  Fri, 21 Oct 2011 17:43:13 +0200
+
+wget (1.13-1) unstable; urgency=low
+
+  * new upstream release 1.13 from 2011-08-09
+    - updated wget-doc-remove-usr-local-in-wget.texi, 
+      wget-fr.po-spelling-correction, 
+    - removed wget-de.po-remove-double-quote-signs (latest de.po),
+      CVE-2010-2252 (included upstream), wget-zh_CN.po-translation-correction,
+      fix-paramter-spelling-error-in-wget.texi, refresh-pofiles
+    - disabled disable-SSLv2 for the first upload
+      see https://savannah.gnu.org/bugs/?33840
+    - includes latest po files. closes: Bug#607198
+    - bugs fixed with this release by upstream:
+    -- IDN support: wget www.köln.de works:) closes: Bug#542145
+    -- wildcard documentation of -X
+       closes: Bug#215128
+    -- wget -O - $URL says `-' saved but there is no file -
+       closes: Bug#353326
+    -- 'wget -c -N' ignores timestamps
+       closes: Bug#402001
+    -- missing a check for Subject Alternative Name (TLS cert.)
+       closes: Bug#409938
+    -- wget segfaults when server returns empty HTTP response code
+       closes: Bug#563872
+    -- wget: -A/-R vs. -O
+       closes: Bug#565942
+    -- Unterminated C string in http_atotm()
+       closes: Bug#581817
+    -- don't use PATH_MAX (FTBFS on hurd)
+       closes: Bug#595538
+    -- info page points to not documented --cookies option
+       closes: Bug#597468
+    -- SIGPIPE signal: wget over ssh orphans itself on ctrl+c
+       closes: Bug#598731
+    -- wget --backup-converted does not work
+       closes: Bug#624675
+    -- --adjust-extension renames .htm files
+       closes: Bug#626438
+    -- wget: Invalid russian translation
+       closes: Bug#502218
+    -- wget: shows only first 3 IP addresses of hostname
+       closes: Bug#612450
+
+  * debian/control correct spelling in description. closes: Bug#635241
+  * debian/control replace libssl-dev by libgnutls-dev in build dependency
+ 
+ -- Noël Köthe <noel@debian.org>  Tue, 12 Aug 2011 15:34:52 +0200
+
+wget (1.12-5) unstable; urgency=low
+
+  * minor update on patch CVE-2010-2252 to mention former option
+    name --use-server-file-name. closes: #602008
+  * debian/control minor name change Noèl -> Noël ;)
+
+ -- Noël Köthe <noel@debian.org>  Sat, 23 Jul 2011 16:21:11 +0200
+
+wget (1.12-4) unstable; urgency=low
+
+  * acknowledge NMUs. Thanks for your work Thorsten and Filippo
+    closes: #622032 #614373
+  * updated Standards-Version: to 3.9.2 without changes
+  * fixed lintian warning:
+    - debian-rules-missing-recommended-target
+  * debian/control add Multi-Arch: foreign
+    closes: #614203
+  * removing wget-infopod_generated_manpage to get the old/upstream
+    provided manpage and no the infopage as manpage. See 1.11.4-4
+    where it were changed. This will return some errors (incomplete
+    sentences, some missing parts) which are caused by texi2pod.
+    closes: #633702 #627468 #589993 #545091
+  * debian/control added libidn11-dev Build-Dep to get IDN support
+    closes: #536692 #542145
+  * debian/control changed FTP and HTTP to uppercase in the description
+    closes: #596358
+  * exit status is documented in the manpage. closes #179710
+  * --follow-ftp example in manpage made more accurate. closes #512578
+
+ -- Noèl Köthe <noel@debian.org>  Fri, 22 Jul 2011 10:22:53 +0200
+
+wget (1.12-3.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * debian/rules: move updating config.{guess,sub} from the clean
+    target to the config.status target to avoid unnecessarily
+    generating patch files with their content (these files are
+    now simply removed by the clean target)
+  * debian/patches/debian-changes-1.12-2: drop accordingly
+  * debian/patches/disable-SSLv2: new; debian/rules: pass the
+    new flag -DNO_SSLv2 to configure (Closes: #622032)
+  * debian/rules: clean away _all_ files changed during build;
+    debian/patches/refresh-pofiles: regenerate all pofiles, which
+    will also be done during package build (these changes are made
+    to keep the package buildable twice in a row)
+  * Add missing B-D on autotools-dev
+
+ -- Thorsten Glaser <tg@mirbsd.de>  Mon, 25 Apr 2011 17:28:39 +0000
+
+wget (1.12-3) unstable; urgency=low
+
+  * Upload by Noèl Köthe <noel@debian.org>;
+  * Convert all dpatch-based patches to quilt-based ones, thus fixing the
+    bug reported by Lucas Nussbaum (closes: #614373).
+  * Add one more patch fixing a typo in doc/wget.texi.
+
+ -- Filippo Rusconi <rusconi-debian@laposte.net>  Thu, 17 Mar 2011 20:28:53 +0100
+
 wget (1.12-2.1) unstable; urgency=high
 
   * Non-maintainer upload by the Security Team.
