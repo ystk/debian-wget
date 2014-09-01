@@ -1,6 +1,6 @@
 /* Command line parsing.
    Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation,
+   2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012 Free Software Foundation,
    Inc.
 
 This file is part of GNU Wget.
@@ -55,7 +55,7 @@ as that of the covered work.  */
 #include "spider.h"
 #include "http.h"               /* for save_cookies */
 #include "ptimer.h"
-
+#include "warc.h"
 #include <getopt.h>
 #include <getpass.h>
 #include <quote.h>
@@ -157,6 +157,7 @@ struct cmdline_option {
 static struct cmdline_option option_data[] =
   {
     { "accept", 'A', OPT_VALUE, "accept", -1 },
+    { "accept-regex", 0, OPT_VALUE, "acceptregex", -1 },
     { "adjust-extension", 'E', OPT_BOOLEAN, "adjustextension", -1 },
     { "append-output", 'a', OPT__APPEND_OUTPUT, NULL, required_argument },
     { "ask-password", 0, OPT_BOOLEAN, "askpassword", -1 },
@@ -166,6 +167,8 @@ static struct cmdline_option option_data[] =
     { "backups", 0, OPT_BOOLEAN, "backups", -1 },
     { "base", 'B', OPT_VALUE, "base", -1 },
     { "bind-address", 0, OPT_VALUE, "bindaddress", -1 },
+    { "body-data", 0, OPT_VALUE, "bodydata", -1 },
+    { "body-file", 0, OPT_VALUE, "bodyfile", -1 },
     { IF_SSL ("ca-certificate"), 0, OPT_VALUE, "cacertificate", -1 },
     { IF_SSL ("ca-directory"), 0, OPT_VALUE, "cadirectory", -1 },
     { "cache", 0, OPT_BOOLEAN, "cache", -1 },
@@ -178,6 +181,7 @@ static struct cmdline_option option_data[] =
     { "continue", 'c', OPT_BOOLEAN, "continue", -1 },
     { "convert-links", 'k', OPT_BOOLEAN, "convertlinks", -1 },
     { "content-disposition", 0, OPT_BOOLEAN, "contentdisposition", -1 },
+    { "content-on-error", 0, OPT_BOOLEAN, "contentonerror", -1 },
     { "cookies", 0, OPT_BOOLEAN, "cookies", -1 },
     { "cut-dirs", 0, OPT_VALUE, "cutdirs", -1 },
     { WHEN_DEBUG ("debug"), 'd', OPT_BOOLEAN, "debug", -1 },
@@ -213,6 +217,7 @@ static struct cmdline_option option_data[] =
     { "http-passwd", 0, OPT_VALUE, "httppassword", -1 }, /* deprecated */
     { "http-password", 0, OPT_VALUE, "httppassword", -1 },
     { "http-user", 0, OPT_VALUE, "httpuser", -1 },
+    { IF_SSL ("https-only"), 0, OPT_BOOLEAN, "httpsonly", -1 },
     { "ignore-case", 0, OPT_BOOLEAN, "ignorecase", -1 },
     { "ignore-length", 0, OPT_BOOLEAN, "ignorelength", -1 },
     { "ignore-tags", 0, OPT_VALUE, "ignoretags", -1 },
@@ -229,6 +234,7 @@ static struct cmdline_option option_data[] =
     { "load-cookies", 0, OPT_VALUE, "loadcookies", -1 },
     { "local-encoding", 0, OPT_VALUE, "localencoding", -1 },
     { "max-redirect", 0, OPT_VALUE, "maxredirect", -1 },
+    { "method", 0, OPT_VALUE, "method", -1 },
     { "mirror", 'm', OPT_BOOLEAN, "mirror", -1 },
     { "no", 'n', OPT__NO, NULL, required_argument },
     { "no-clobber", 0, OPT_BOOLEAN, "noclobber", -1 },
@@ -242,7 +248,7 @@ static struct cmdline_option option_data[] =
     { "post-data", 0, OPT_VALUE, "postdata", -1 },
     { "post-file", 0, OPT_VALUE, "postfile", -1 },
     { "prefer-family", 0, OPT_VALUE, "preferfamily", -1 },
-    { "preserve-permissions", 0, OPT_BOOLEAN, "preservepermissions", -1 }, /* deprecated */
+    { "preserve-permissions", 0, OPT_BOOLEAN, "preservepermissions", -1 },
     { IF_SSL ("private-key"), 0, OPT_VALUE, "privatekey", -1 },
     { IF_SSL ("private-key-type"), 0, OPT_VALUE, "privatekeytype", -1 },
     { "progress", 0, OPT_VALUE, "progress", -1 },
@@ -259,10 +265,13 @@ static struct cmdline_option option_data[] =
     { "read-timeout", 0, OPT_VALUE, "readtimeout", -1 },
     { "recursive", 'r', OPT_BOOLEAN, "recursive", -1 },
     { "referer", 0, OPT_VALUE, "referer", -1 },
+    { "regex-type", 0, OPT_VALUE, "regextype", -1 },
     { "reject", 'R', OPT_VALUE, "reject", -1 },
+    { "reject-regex", 0, OPT_VALUE, "rejectregex", -1 },
     { "relative", 'L', OPT_BOOLEAN, "relativeonly", -1 },
     { "remote-encoding", 0, OPT_VALUE, "remoteencoding", -1 },
     { "remove-listing", 0, OPT_BOOLEAN, "removelisting", -1 },
+    { "report-speed", 0, OPT_BOOLEAN, "reportspeed", -1 },
     { "restrict-file-names", 0, OPT_BOOLEAN, "restrictfilenames", -1 },
     { "retr-symlinks", 0, OPT_BOOLEAN, "retrsymlinks", -1 },
     { "retry-connrefused", 0, OPT_BOOLEAN, "retryconnrefused", -1 },
@@ -286,6 +295,17 @@ static struct cmdline_option option_data[] =
     { "version", 'V', OPT_FUNCALL, (void *) print_version, no_argument },
     { "wait", 'w', OPT_VALUE, "wait", -1 },
     { "waitretry", 0, OPT_VALUE, "waitretry", -1 },
+    { "warc-cdx", 0, OPT_BOOLEAN, "warccdx", -1 },
+#ifdef HAVE_LIBZ
+    { "warc-compression", 0, OPT_BOOLEAN, "warccompression", -1 },
+#endif
+    { "warc-dedup", 0, OPT_VALUE, "warccdxdedup", -1 },
+    { "warc-digests", 0, OPT_BOOLEAN, "warcdigests", -1 },
+    { "warc-file", 0, OPT_VALUE, "warcfile", -1 },
+    { "warc-header", 0, OPT_VALUE, "warcheader", -1 },
+    { "warc-keep-log", 0, OPT_BOOLEAN, "warckeeplog", -1 },
+    { "warc-max-size", 0, OPT_VALUE, "warcmaxsize", -1 },
+    { "warc-tempdir", 0, OPT_VALUE, "warctempdir", -1 },
 #ifdef USE_WATT32
     { "wdebug", 0, OPT_BOOLEAN, "wdebug", -1 },
 #endif
@@ -444,6 +464,8 @@ Logging and input file:\n"),
     N_("\
   -nv, --no-verbose          turn off verboseness, without being quiet.\n"),
     N_("\
+       --report-speed=TYPE   Output bandwidth as TYPE.  TYPE can be bits.\n"),
+    N_("\
   -i,  --input-file=FILE     download URLs found in local or external FILE.\n"),
     N_("\
   -F,  --force-html          treat input file as HTML.\n"),
@@ -592,8 +614,16 @@ HTTP options:\n"),
     N_("\
        --post-file=FILE        use the POST method; send contents of FILE.\n"),
     N_("\
+       --method=HTTPMethod     use method \"HTTPMethod\" in the header.\n"),
+    N_("\
+       --body-data=STRING      Send STRING as data. --method MUST be set.\n"),
+    N_("\
+       --body-file=FILE        Send contents of FILE. --method MUST be set.\n"),
+    N_("\
        --content-disposition   honor the Content-Disposition header when\n\
                                choosing local file names (EXPERIMENTAL).\n"),
+    N_("\
+       --content-on-error      output the received content on server errors.\n"),
     N_("\
        --auth-no-challenge     send Basic HTTP authentication information\n\
                                without first waiting for the server's\n\
@@ -605,7 +635,9 @@ HTTP options:\n"),
 HTTPS (SSL/TLS) options:\n"),
     N_("\
        --secure-protocol=PR     choose secure protocol, one of auto, SSLv2,\n\
-                                SSLv3, and TLSv1.\n"),
+                                SSLv3, TLSv1 and PFS.\n"),
+    N_("\
+       --https-only             only follow secure HTTPS links\n"),
     N_("\
        --no-check-certificate   don't validate the server's certificate.\n"),
     N_("\
@@ -644,7 +676,34 @@ FTP options:\n"),
     N_("\
        --no-passive-ftp        disable the \"passive\" transfer mode.\n"),
     N_("\
+       --preserve-permissions  preserve remote file permissions.\n"),
+    N_("\
        --retr-symlinks         when recursing, get linked-to files (not dir).\n"),
+    "\n",
+
+    N_("\
+WARC options:\n"),
+    N_("\
+       --warc-file=FILENAME      save request/response data to a .warc.gz file.\n"),
+    N_("\
+       --warc-header=STRING      insert STRING into the warcinfo record.\n"),
+    N_("\
+       --warc-max-size=NUMBER    set maximum size of WARC files to NUMBER.\n"),
+    N_("\
+       --warc-cdx                write CDX index files.\n"),
+    N_("\
+       --warc-dedup=FILENAME     do not store records listed in this CDX file.\n"),
+#ifdef HAVE_LIBZ
+    N_("\
+       --no-warc-compression     do not compress WARC files with GZIP.\n"),
+#endif
+    N_("\
+       --no-warc-digests         do not calculate SHA1 digests.\n"),
+    N_("\
+       --no-warc-keep-log        do not store the log file in a WARC record.\n"),
+    N_("\
+       --warc-tempdir=DIRECTORY  location for temporary files created by the\n\
+                                 WARC writer.\n"),
     "\n",
 
     N_("\
@@ -658,6 +717,9 @@ Recursive download:\n"),
     N_("\
   -k,  --convert-links      make links in downloaded HTML or CSS point to\n\
                             local files.\n"),
+    N_("\
+  --backups=N   before writing file X, rotate up to N backup files.\n"),
+
 #ifdef __VMS
     N_("\
   -K,  --backup-converted   before converting file X, back up as X_orig.\n"),
@@ -679,6 +741,17 @@ Recursive accept/reject:\n"),
   -A,  --accept=LIST               comma-separated list of accepted extensions.\n"),
     N_("\
   -R,  --reject=LIST               comma-separated list of rejected extensions.\n"),
+    N_("\
+       --accept-regex=REGEX        regex matching accepted URLs.\n"),
+    N_("\
+       --reject-regex=REGEX        regex matching rejected URLs.\n"),
+#ifdef HAVE_LIBPCRE
+    N_("\
+       --regex-type=TYPE           regex type (posix|pcre).\n"),
+#else
+    N_("\
+       --regex-type=TYPE           regex type (posix).\n"),
+#endif
     N_("\
   -D,  --domains=LIST              comma-separated list of accepted domains.\n"),
     N_("\
@@ -703,7 +776,6 @@ Recursive accept/reject:\n"),
     N_("\
   -np, --no-parent                 don't ascend to the parent directory.\n"),
     "\n",
-
     N_("Mail bug reports and suggestions to <bug-wget@gnu.org>.\n")
   };
 
@@ -771,15 +843,16 @@ format_and_print_line (const char *prefix, const char *line,
 
   assert (prefix != NULL);
   assert (line != NULL);
+  assert (line_length > TABULATION);
 
   line_dup = xstrdup (line);
 
-  if (line_length <= 0)
-    line_length = MAX_CHARS_PER_LINE - TABULATION;
-
   if (printf ("%s", prefix) < 0)
     return -1;
-  remaining_chars = line_length;
+
+  /* Wrap to new line after prefix. */
+  remaining_chars = 0;
+
   /* We break on spaces. */
   token = strtok (line_dup, " ");
   while (token != NULL)
@@ -787,7 +860,7 @@ format_and_print_line (const char *prefix, const char *line,
       /* If however a token is much larger than the maximum
          line length, all bets are off and we simply print the
          token on the next line. */
-      if (remaining_chars <= strlen (token))
+      if (remaining_chars <= (int) strlen (token))
         {
           if (printf ("\n%*c", TABULATION, ' ') < 0)
             return -1;
@@ -861,7 +934,7 @@ print_version (void)
 
 #ifdef ENABLE_NLS
   if (format_and_print_line (locale_title,
-                        LOCALEDIR,
+                             LOCALEDIR,
                              MAX_CHARS_PER_LINE) < 0)
     exit (3);
 #endif /* def ENABLE_NLS */
@@ -882,9 +955,9 @@ print_version (void)
     exit (3);
 
   /* TRANSLATORS: When available, an actual copyright character
-     (cirle-c) should be used in preference to "(C)". */
+     (circle-c) should be used in preference to "(C)". */
   if (fputs (_("\
-Copyright (C) 2009 Free Software Foundation, Inc.\n"), stdout) < 0)
+Copyright (C) 2011 Free Software Foundation, Inc.\n"), stdout) < 0)
     exit (3);
   if (fputs (_("\
 License GPLv3+: GNU GPL version 3 or later\n\
@@ -905,6 +978,7 @@ There is NO WARRANTY, to the extent permitted by law.\n"), stdout) < 0)
 }
 
 char *program_name; /* Needed by lib/error.c. */
+char *program_argstring; /* Needed by wget_warc.c. */
 
 int
 main (int argc, char **argv)
@@ -940,13 +1014,34 @@ main (int argc, char **argv)
   windows_main ((char **) &exec_name);
 #endif
 
+  /* Construct the arguments string. */
+  int argstring_length = 1;
+  for (i = 1; i < argc; i++)
+    argstring_length += strlen (argv[i]) + 2 + 1;
+  char *p = program_argstring = malloc (argstring_length * sizeof (char));
+  if (p == NULL)
+    {
+      fprintf (stderr, _("Memory allocation problem\n"));
+      exit (2);
+    }
+  for (i = 1; i < argc; i++)
+    {
+      *p++ = '"';
+      int arglen = strlen (argv[i]);
+      memcpy (p, argv[i], arglen);
+      p += arglen;
+      *p++ = '"';
+      *p++ = ' ';
+    }
+  *p = '\0';
+
   /* Load the hard-coded defaults.  */
   defaults ();
 
   init_switches ();
 
-  /* This seperate getopt_long is needed to find the user config
-     and parse it before the other user options. */
+  /* This separate getopt_long is needed to find the user config file
+     option ("--config") and parse it before the other user options. */
   longindex = -1;
   int retconf;
   bool use_userconfig = false;
@@ -955,22 +1050,27 @@ main (int argc, char **argv)
                                 short_options, long_options, &longindex)) != -1)
     {
       int confval;
-      bool userrc_ret = true;
       struct cmdline_option *config_opt;
-      confval = long_options[longindex].val;
-      config_opt = &option_data[confval & ~BOOLEAN_NEG_MARKER];
-      if (strcmp (config_opt->long_name, "config") == 0)
+
+      /* There is no short option for "--config". */
+      if (longindex >= 0)
         {
-          userrc_ret &= run_wgetrc (optarg);
-          use_userconfig = true;
+          confval = long_options[longindex].val;
+          config_opt = &option_data[confval & ~BOOLEAN_NEG_MARKER];
+          if (strcmp (config_opt->long_name, "config") == 0)
+            {
+              bool userrc_ret = true;
+              userrc_ret &= run_wgetrc (optarg);
+              use_userconfig = true;
+              if (userrc_ret)
+                break;
+              else
+                {
+                  fprintf (stderr, _("Exiting due to error in %s\n"), optarg);
+                  exit (2);
+                }
+            }
         }
-      if (!userrc_ret)
-        {
-          printf ("Exiting due to error in %s\n", optarg);
-          exit (2);
-        }
-      else
-        break;
     }
 
   /* If the user did not specify a config, read the system wgetrc and ~/.wgetrc. */
@@ -993,9 +1093,10 @@ main (int argc, char **argv)
         {
           if (ret == '?')
             {
-              print_usage (0);
-              printf ("\n");
-              printf (_("Try `%s --help' for more options.\n"), exec_name);
+              print_usage (1);
+              fprintf (stderr, "\n");
+              fprintf (stderr, _("Try `%s --help' for more options.\n"),
+		       exec_name);
               exit (2);
             }
           /* Find the short option character in the mapping.  */
@@ -1103,7 +1204,7 @@ main (int argc, char **argv)
     {
       fprintf (stderr,
                _("Both --no-clobber and --convert-links were specified,"
-                 "only --convert-links will be used.\n"));
+                 " only --convert-links will be used.\n"));
       opt.noclobber = false;
     }
 
@@ -1125,6 +1226,7 @@ main (int argc, char **argv)
 
   if (opt.verbose == -1)
     opt.verbose = !opt.quiet;
+
 
   /* Sanity checks.  */
   if (opt.verbose && opt.quiet)
@@ -1184,6 +1286,47 @@ for details.\n\n"));
            }
     }
 
+  if (opt.warc_filename != 0)
+    {
+      if (opt.noclobber)
+        {
+          fprintf (stderr,
+                   _("WARC output does not work with --no-clobber, "
+                     "--no-clobber will be disabled.\n"));
+          opt.noclobber = false;
+        }
+      if (opt.timestamping)
+        {
+          fprintf (stderr,
+                   _("WARC output does not work with timestamping, "
+                     "timestamping will be disabled.\n"));
+          opt.timestamping = false;
+        }
+      if (opt.spider)
+        {
+          fprintf (stderr,
+                   _("WARC output does not work with --spider.\n"));
+          exit (1);
+        }
+      if (opt.always_rest)
+        {
+          fprintf (stderr,
+                   _("WARC output does not work with --continue, "
+                     "--continue will be disabled.\n"));
+          opt.always_rest = false;
+        }
+      if (opt.warc_cdx_dedup_filename != 0 && !opt.warc_digests_enabled)
+        {
+          fprintf (stderr,
+                   _("Digests are disabled; WARC deduplication will "
+                     "not find duplicate records.\n"));
+        }
+      if (opt.warc_keep_log)
+        {
+          opt.progress_type = xstrdup ("dot");
+        }
+    }
+
   if (opt.ask_passwd && opt.passwd)
     {
       fprintf (stderr,
@@ -1197,11 +1340,98 @@ for details.\n\n"));
       /* No URL specified.  */
       fprintf (stderr, _("%s: missing URL\n"), exec_name);
       print_usage (1);
-      printf ("\n");
+      fprintf (stderr, "\n");
       /* #### Something nicer should be printed here -- similar to the
          pre-1.5 `--help' page.  */
       fprintf (stderr, _("Try `%s --help' for more options.\n"), exec_name);
       exit (1);
+    }
+
+  /* Compile the regular expressions.  */
+  switch (opt.regex_type)
+    {
+#ifdef HAVE_LIBPCRE
+      case regex_type_pcre:
+        opt.regex_compile_fun = compile_pcre_regex;
+        opt.regex_match_fun = match_pcre_regex;
+        break;
+#endif
+
+      case regex_type_posix:
+      default:
+        opt.regex_compile_fun = compile_posix_regex;
+        opt.regex_match_fun = match_posix_regex;
+        break;
+    }
+  if (opt.acceptregex_s)
+    {
+      opt.acceptregex = opt.regex_compile_fun (opt.acceptregex_s);
+      if (!opt.acceptregex)
+        exit (1);
+    }
+  if (opt.rejectregex_s)
+    {
+      opt.rejectregex = opt.regex_compile_fun (opt.rejectregex_s);
+      if (!opt.rejectregex)
+        exit (1);
+    }
+  if (opt.post_data || opt.post_file_name)
+    {
+      if (opt.post_data && opt.post_file_name)
+        {
+          fprintf (stderr, _("You cannot specify both --post-data and --post-file.\n"));
+          exit (1);
+        }
+      else if (opt.method)
+        {
+          fprintf (stderr, _("You cannot use --post-data or --post-file along with --method. "
+                             "--method expects data through --body-data and --body-file options"));
+          exit (1);
+        }
+    }
+  if (opt.body_data || opt.body_file)
+    {
+      if (!opt.method)
+        {
+          fprintf (stderr, _("You must specify a method through --method=HTTPMethod "
+                              "to use with --body-data or --body-file.\n"));
+          exit (1);
+        }
+      else if (opt.body_data && opt.body_file)
+        {
+          fprintf (stderr, _("You cannot specify both --body-data and --body-file.\n"));
+          exit (1);
+        }
+    }
+
+  /* Set various options as required for opt.method.  */
+
+  /* When user specifies HEAD as the method, we do not wish to download any
+     files. Hence, set wget to run in spider mode.  */
+  if (opt.method && strcasecmp (opt.method, "HEAD") == 0)
+    setoptval ("spider", "1", "spider");
+
+  /* Convert post_data to body-data and post_file_name to body-file options.
+     This is required so as to remove redundant code later on in gethttp().
+     The --post-data and --post-file options may also be removed in
+     the future hence it makes sense to convert them to aliases for
+     the more generic --method options.
+     This MUST occur only after the sanity checks so as to prevent the
+     user from setting both post and body options simultaneously.
+  */
+  if (opt.post_data || opt.post_file_name)
+    {
+        setoptval ("method", "POST", "method");
+        if (opt.post_data)
+          {
+            setoptval ("bodydata", opt.post_data, "body-data");
+            opt.post_data = NULL;
+          }
+        else
+          {
+            setoptval ("bodyfile", opt.post_file_name, "body-file");
+            opt.post_file_name = NULL;
+          }
     }
 
 #ifdef ENABLE_IRI
@@ -1250,6 +1480,11 @@ for details.\n\n"));
 
   /* Fill in the arguments.  */
   url = alloca_array (char *, nurl + 1);
+  if (url == NULL)
+    {
+      fprintf (stderr, _("Memory allocation problem\n"));
+      exit (2);
+    }
   for (i = 0; i < nurl; i++, optind++)
     {
       char *rewritten = rewrite_shorthand_url (argv[optind]);
@@ -1262,6 +1497,10 @@ for details.\n\n"));
 
   /* Initialize logging.  */
   log_init (opt.lfilename, append_to_log);
+
+  /* Open WARC file. */
+  if (opt.warc_filename != 0)
+    warc_init ();
 
   DEBUGP (("DEBUG output created by Wget %s on %s.\n\n",
            version_string, OS_TYPE));
@@ -1395,7 +1634,7 @@ outputting to a regular file.\n"));
                           &dt, opt.recursive, iri, true);
           }
 
-          if (opt.delete_after && file_exists_p(filename))
+          if (opt.delete_after && filename != NULL && file_exists_p (filename))
             {
               DEBUGP (("Removing file due to --delete-after in main():\n"));
               logprintf (LOG_VERBOSE, _("Removing %s.\n"), filename);
@@ -1462,12 +1701,9 @@ outputting to a regular file.\n"));
   if (opt.convert_links && !opt.delete_after)
     convert_all_links ();
 
-  log_close ();
-  for (i = 0; i < nurl; i++)
-    xfree (url[i]);
   cleanup ();
 
-  return get_exit_status ();
+  exit (get_exit_status ());
 }
 #endif /* TESTING */
 

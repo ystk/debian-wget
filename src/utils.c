@@ -59,12 +59,12 @@ as that of the covered work.  */
 # endif
 #endif
 
+#include <sys/time.h>
+
 #include <sys/stat.h>
 
 /* For TIOCGWINSZ and friends: */
-#ifdef HAVE_SYS_IOCTL_H
-# include <sys/ioctl.h>
-#endif
+#include <sys/ioctl.h>
 #ifdef HAVE_TERMIOS_H
 # include <termios.h>
 #endif
@@ -72,6 +72,11 @@ as that of the covered work.  */
 /* Needed for Unix version of run_with_timeout. */
 #include <signal.h>
 #include <setjmp.h>
+
+#include <regex.h>
+#ifdef HAVE_LIBPCRE
+# include <pcre.h>
+#endif
 
 #ifndef HAVE_SIGSETJMP
 /* If sigsetjmp is a macro, configure won't pick it up. */
@@ -698,7 +703,7 @@ unique_create (const char *name, bool binary, char **opened_name)
       xfree (uname);
       uname = unique_name (name, false);
     }
-  if (opened_name && fp != NULL)
+  if (opened_name)
     {
       if (fp)
         *opened_name = uname;
@@ -769,8 +774,7 @@ fopen_excl (const char *fname, int binary)
       open_id = 13;
       fd = open( fname,                 /* File name. */
        flags,                           /* Flags. */
-       0777,                            /* Mode for default protection.
-*/
+       0777,                            /* Mode for default protection. */
        "rfm=stmlf",                     /* Stream_LF. */
        OPEN_OPT_ARGS);                  /* Access callback. */
     }
@@ -896,15 +900,14 @@ static bool in_acclist (const char *const *, const char *, bool);
 bool
 acceptable (const char *s)
 {
-  int l = strlen (s);
+  const char *p;
 
   if (opt.output_document && strcmp (s, opt.output_document) == 0)
     return true;
 
-  while (l && s[l] != '/')
-    --l;
-  if (s[l] == '/')
-    s += (l + 1);
+  if ((p = strrchr (s, '/')))
+    s = p + 1;
+
   if (opt.accepts)
     {
       if (opt.rejects)
@@ -915,6 +918,20 @@ acceptable (const char *s)
     }
   else if (opt.rejects)
     return !in_acclist ((const char *const *)opt.rejects, s, true);
+
+  return true;
+}
+
+/* Determine whether an URL is acceptable to be followed, according to
+   regex patterns to accept/reject.  */
+bool
+accept_url (const char *s)
+{
+  if (opt.acceptregex && !opt.regex_match_fun (opt.acceptregex, s))
+    return false;
+  if (opt.rejectregex && opt.regex_match_fun (opt.rejectregex, s))
+    return false;
+
   return true;
 }
 
@@ -1001,29 +1018,15 @@ accdir (const char *directory)
 bool
 match_tail (const char *string, const char *tail, bool fold_case)
 {
-  int i, j;
+  int pos = strlen (string) - strlen (tail);
 
-  /* We want this to be fast, so we code two loops, one with
-     case-folding, one without. */
+  if (pos < 0)
+    return false;  /* tail is longer than string.  */
 
   if (!fold_case)
-    {
-      for (i = strlen (string), j = strlen (tail); i >= 0 && j >= 0; i--, j--)
-        if (string[i] != tail[j])
-          break;
-    }
+    return !strcmp (string + pos, tail);
   else
-    {
-      for (i = strlen (string), j = strlen (tail); i >= 0 && j >= 0; i--, j--)
-        if (c_tolower (string[i]) != c_tolower (tail[j]))
-          break;
-    }
-
-  /* If the tail was exhausted, the match was succesful.  */
-  if (j == -1)
-    return true;
-  else
-    return false;
+    return !strcasecmp (string + pos, tail);
 }
 
 /* Checks whether string S matches each element of ACCEPTS.  A list
@@ -1072,15 +1075,12 @@ in_acclist (const char *const *accepts, const char *s, bool backward)
 char *
 suffix (const char *str)
 {
-  int i;
+  char *p;
 
-  for (i = strlen (str); i && str[i] != '/' && str[i] != '.'; i--)
-    ;
+  if ((p = strrchr (str, '.')) && !strchr (p + 1, '/'))
+    return p + 1;
 
-  if (str[i++] == '.')
-    return (char *)str + i;
-  else
-    return NULL;
+  return NULL;
 }
 
 /* Return true if S contains globbing wildcards (`*', `?', `[' or
@@ -1089,10 +1089,7 @@ suffix (const char *str)
 bool
 has_wildcards_p (const char *s)
 {
-  for (; *s; s++)
-    if (*s == '*' || *s == '?' || *s == '[' || *s == ']')
-      return true;
-  return false;
+  return !!strpbrk (s, "*?[]");
 }
 
 /* Return true if FNAME ends with a typical HTML suffix.  The
@@ -1121,56 +1118,6 @@ has_html_suffix_p (const char *fname)
   return false;
 }
 
-/* Read a line from FP and return the pointer to freshly allocated
-   storage.  The storage space is obtained through malloc() and should
-   be freed with free() when it is no longer needed.
-
-   The length of the line is not limited, except by available memory.
-   The newline character at the end of line is retained.  The line is
-   terminated with a zero character.
-
-   After end-of-file is encountered without anything being read, NULL
-   is returned.  NULL is also returned on error.  To distinguish
-   between these two cases, use the stdio function ferror().  */
-
-char *
-read_whole_line (FILE *fp)
-{
-  int length = 0;
-  int bufsize = 82;
-  char *line = xmalloc (bufsize);
-
-  while (fgets (line + length, bufsize - length, fp))
-    {
-      length += strlen (line + length);
-      if (length == 0)
-        /* Possible for example when reading from a binary file where
-           a line begins with \0.  */
-        continue;
-
-      if (line[length - 1] == '\n')
-        break;
-
-      /* fgets() guarantees to read the whole line, or to use up the
-         space we've given it.  We can double the buffer
-         unconditionally.  */
-      bufsize <<= 1;
-      line = xrealloc (line, bufsize);
-    }
-  if (length == 0 || ferror (fp))
-    {
-      xfree (line);
-      return NULL;
-    }
-  if (length + 1 < bufsize)
-    /* Relieve the memory from our exponential greediness.  We say
-       `length + 1' because the terminating \0 is not included in
-       LENGTH.  We don't need to zero-terminate the string ourselves,
-       though, because fgets() does that.  */
-    line = xrealloc (line, length + 1);
-  return line;
-}
-
 /* Read FILE into memory.  A pointer to `struct file_memory' are
    returned; use struct element `content' to access file contents, and
    the element `length' to know the file length.  `content' is *not*
@@ -1826,6 +1773,17 @@ number_to_static_string (wgint number)
   ringpos = (ringpos + 1) % RING_SIZE;
   return buf;
 }
+
+/* Converts the byte to bits format if --report-bps option is enabled
+ */
+wgint
+convert_to_bits (wgint num)
+{
+  if (opt.report_bps)
+    return num * 8;
+  return num;
+}
+
 
 /* Determine the width of the terminal we're running on.  If that's
    not possible, return 0.  */
@@ -2299,6 +2257,89 @@ base64_decode (const char *base64, void *dest)
   return q - (char *) dest;
 }
 
+#ifdef HAVE_LIBPCRE
+/* Compiles the PCRE regex. */
+void *
+compile_pcre_regex (const char *str)
+{
+  const char *errbuf;
+  int erroffset;
+  pcre *regex = pcre_compile (str, 0, &errbuf, &erroffset, 0);
+  if (! regex)
+    {
+      fprintf (stderr, _("Invalid regular expression %s, %s\n"),
+               quote (str), errbuf);
+      return false;
+    }
+  return regex;
+}
+#endif
+
+/* Compiles the POSIX regex. */
+void *
+compile_posix_regex (const char *str)
+{
+  regex_t *regex = xmalloc (sizeof (regex_t));
+  int errcode = regcomp ((regex_t *) regex, str, REG_EXTENDED | REG_NOSUB);
+  if (errcode != 0)
+    {
+      int errbuf_size = regerror (errcode, (regex_t *) regex, NULL, 0);
+      char *errbuf = xmalloc (errbuf_size);
+      regerror (errcode, (regex_t *) regex, errbuf, errbuf_size);
+      fprintf (stderr, _("Invalid regular expression %s, %s\n"),
+               quote (str), errbuf);
+      xfree (errbuf);
+      return NULL;
+    }
+
+  return regex;
+}
+
+#ifdef HAVE_LIBPCRE
+#define OVECCOUNT 30
+/* Matches a PCRE regex.  */
+bool
+match_pcre_regex (const void *regex, const char *str)
+{
+  int l = strlen (str);
+  int ovector[OVECCOUNT];
+
+  int rc = pcre_exec ((pcre *) regex, 0, str, l, 0, 0, ovector, OVECCOUNT);
+  if (rc == PCRE_ERROR_NOMATCH)
+    return false;
+  else if (rc < 0)
+    {
+      logprintf (LOG_VERBOSE, _("Error while matching %s: %d\n"),
+                 quote (str), rc);
+      return false;
+    }
+  else
+    return true;
+}
+#undef OVECCOUNT
+#endif
+
+/* Matches a POSIX regex.  */
+bool
+match_posix_regex (const void *regex, const char *str)
+{
+  int rc = regexec ((regex_t *) regex, str, 0, NULL, 0);
+  if (rc == REG_NOMATCH)
+    return false;
+  else if (rc == 0)
+    return true;
+  else
+    {
+      int errbuf_size = regerror (rc, opt.acceptregex, NULL, 0);
+      char *errbuf = xmalloc (errbuf_size);
+      regerror (rc, opt.acceptregex, errbuf, errbuf_size);
+      logprintf (LOG_VERBOSE, _("Error while matching %s: %d\n"),
+                 quote (str), rc);
+      xfree (errbuf);
+      return false;
+    }
+}
+
 #undef IS_ASCII
 #undef NEXT_CHAR
 
@@ -2383,21 +2424,75 @@ print_decimal (double number)
   return buf;
 }
 
+/* Get the maximum name length for the given path. */
+/* Return 0 if length is unknown. */
+size_t
+get_max_length (const char *path, int length, int name)
+{
+  long ret;
+  char *p, *d;
+
+  /* Make a copy of the path that we can modify. */
+  p = path ? strdupdelim (path, path + length) : strdup ("");
+
+  for (;;)
+    {
+      errno = 0;
+      /* For an empty path query the current directory. */
+#if HAVE_PATHCONF
+      ret = pathconf (*p ? p : ".", name);
+      if (!(ret < 0 && errno == ENOENT))
+        break;
+#else
+      ret = PATH_MAX;
+#endif
+
+      /* The path does not exist yet, but may be created. */
+      /* Already at current or root directory, give up. */
+      if (!*p || strcmp (p, "/") == 0)
+        break;
+
+      /* Remove one directory level and try again. */
+      d = strrchr (p, '/');
+      if (d == p)
+        p[1] = '\0';  /* check root directory */
+      else if (d)
+        *d = '\0';  /* remove last directory part */
+      else
+        *p = '\0';  /* check current directory */
+    }
+
+  xfree (p);
+
+  if (ret < 0)
+    {
+      /* pathconf() has a message for us. */
+      if (errno != 0)
+          perror ("pathconf");
+
+      /* If (errno == 0) then there is no max length.
+         Even on error return 0 so the caller can continue. */
+      return 0;
+    }
+
+  return ret;
+}
+
 #ifdef TESTING
 
 const char *
 test_subdir_p()
 {
-  int i;
-  struct {
-    char *d1;
-    char *d2;
+  static struct {
+    const char *d1;
+    const char *d2;
     bool result;
   } test_array[] = {
     { "/somedir", "/somedir", true },
     { "/somedir", "/somedir/d2", true },
     { "/somedir/d1", "/somedir", false },
   };
+  unsigned i;
 
   for (i = 0; i < countof(test_array); ++i)
     {
@@ -2413,10 +2508,9 @@ test_subdir_p()
 const char *
 test_dir_matches_p()
 {
-  int i;
-  struct {
-    char *dirlist[3];
-    char *dir;
+  static struct {
+    const char *dirlist[3];
+    const char *dir;
     bool result;
   } test_array[] = {
     { { "/somedir", "/someotherdir", NULL }, "somedir", true },
@@ -2435,6 +2529,7 @@ test_dir_matches_p()
     { { "/Tmp/has", NULL, NULL }, "/Tmp/has space", false },
     { { "/Tmp/has", NULL, NULL }, "/Tmp/has,comma", false },
   };
+  unsigned i;
 
   for (i = 0; i < countof(test_array); ++i)
     {

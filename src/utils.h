@@ -90,6 +90,7 @@ char *file_merge (const char *, const char *);
 
 int fnmatch_nocase (const char *, const char *, int);
 bool acceptable (const char *);
+bool accept_url (const char *);
 bool accdir (const char *s);
 char *suffix (const char *s);
 bool match_tail (const char *, const char *, bool);
@@ -97,7 +98,6 @@ bool has_wildcards_p (const char *);
 
 bool has_html_suffix_p (const char *);
 
-char *read_whole_line (FILE *);
 struct file_memory *wget_read_file (const char *);
 void wget_read_file_free (struct file_memory *);
 
@@ -127,6 +127,7 @@ char *human_readable (HR_NUMTYPE);
 int numdigit (wgint);
 char *number_to_string (char *, wgint);
 char *number_to_static_string (wgint);
+wgint convert_to_bits (wgint);
 
 int determine_screen_width (void);
 int random_number (int);
@@ -141,9 +142,19 @@ void xsleep (double);
 int base64_encode (const void *, int, char *);
 int base64_decode (const char *, void *);
 
+#ifdef HAVE_LIBPCRE
+void *compile_pcre_regex (const char *);
+bool match_pcre_regex (const void *, const char *);
+#endif
+
+void *compile_posix_regex (const char *);
+bool match_posix_regex (const void *, const char *);
+
 void stable_sort (void *, size_t, size_t, int (*) (const void *, const void *));
 
 const char *print_decimal (double);
+
+size_t get_max_length (const char *path, int length, int name);
 
 extern unsigned char char_prop[];
 

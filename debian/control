@@ -2,13 +2,14 @@ Source: wget
 Section: web
 Priority: important
 Maintainer: Noël Köthe <noel@debian.org>
-Build-Depends: debhelper (>> 5.0.0), gettext, texinfo, libgnutls-dev, autotools-dev, libidn11-dev
-Standards-Version: 3.9.2
+Build-Depends: debhelper (>> 9.0.0), gettext, texinfo, libgnutls28-dev, autotools-dev, libidn11-dev, uuid-dev
+Standards-Version: 3.9.5
 Homepage: http://www.gnu.org/software/wget/
 
 Package: wget
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: ca-certificates
 Conflicts: wget-ssl
 Multi-Arch: foreign
 Description: retrieves files from the web

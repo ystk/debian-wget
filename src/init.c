@@ -1,6 +1,6 @@
 /* Reading/parsing the initialization file.
    Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2005, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation,
+   2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012 Free Software Foundation,
    Inc.
 
 This file is part of GNU Wget.
@@ -30,6 +30,7 @@ shall include the source code for the parts of OpenSSL used as well
 as that of the covered work.  */
 
 #include "wget.h"
+#include "exits.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,10 @@ as that of the covered work.  */
 # endif
 #endif
 
+#include <regex.h>
+#ifdef HAVE_LIBPCRE
+# include <pcre.h>
+#endif
 
 #ifdef HAVE_PWD_H
 # include <pwd.h>
@@ -62,6 +67,7 @@ as that of the covered work.  */
 #include "res.h"                /* for res_cleanup */
 #include "http.h"               /* for http_cleanup */
 #include "retr.h"               /* for output_stream */
+#include "warc.h"               /* for warc_close */
 
 #ifdef TESTING
 #include "test.h"
@@ -81,6 +87,7 @@ CMD_DECLARE (cmd_directory_vector);
 CMD_DECLARE (cmd_number);
 CMD_DECLARE (cmd_number_inf);
 CMD_DECLARE (cmd_string);
+CMD_DECLARE (cmd_string_uppercase);
 CMD_DECLARE (cmd_file);
 CMD_DECLARE (cmd_directory);
 CMD_DECLARE (cmd_time);
@@ -88,12 +95,15 @@ CMD_DECLARE (cmd_vector);
 
 CMD_DECLARE (cmd_spec_dirstruct);
 CMD_DECLARE (cmd_spec_header);
+CMD_DECLARE (cmd_spec_warc_header);
 CMD_DECLARE (cmd_spec_htmlify);
 CMD_DECLARE (cmd_spec_mirror);
 CMD_DECLARE (cmd_spec_prefer_family);
 CMD_DECLARE (cmd_spec_progress);
 CMD_DECLARE (cmd_spec_recursive);
+CMD_DECLARE (cmd_spec_regex_type);
 CMD_DECLARE (cmd_spec_restrict_file_names);
+CMD_DECLARE (cmd_spec_report_speed);
 #ifdef HAVE_SSL
 CMD_DECLARE (cmd_spec_secure_protocol);
 #endif
@@ -115,6 +125,7 @@ static const struct {
 } commands[] = {
   /* KEEP THIS LIST ALPHABETICALLY SORTED */
   { "accept",           &opt.accepts,           cmd_vector },
+  { "acceptregex",      &opt.acceptregex_s,     cmd_string },
   { "addhostdir",       &opt.add_hostdir,       cmd_boolean },
   { "adjustextension",  &opt.adjust_extension,  cmd_boolean },
   { "alwaysrest",       &opt.always_rest,       cmd_boolean }, /* deprecated */
@@ -126,6 +137,8 @@ static const struct {
   { "backups",          &opt.backups,           cmd_number },
   { "base",             &opt.base_href,         cmd_string },
   { "bindaddress",      &opt.bind_address,      cmd_string },
+  { "bodydata",         &opt.body_data,         cmd_string },
+  { "bodyfile",         &opt.body_file,         cmd_string },
 #ifdef HAVE_SSL
   { "cacertificate",    &opt.ca_cert,           cmd_file },
 #endif
@@ -139,6 +152,7 @@ static const struct {
   { "chooseconfig",     &opt.choose_config,	cmd_file },
   { "connecttimeout",   &opt.connect_timeout,   cmd_time },
   { "contentdisposition", &opt.content_disposition, cmd_boolean },
+  { "contentonerror",   &opt.content_on_error,  cmd_boolean },
   { "continue",         &opt.always_rest,       cmd_boolean },
   { "convertlinks",     &opt.convert_links,     cmd_boolean },
   { "cookies",          &opt.cookies,           cmd_boolean },
@@ -146,7 +160,7 @@ static const struct {
 #ifdef ENABLE_DEBUG
   { "debug",            &opt.debug,             cmd_boolean },
 #endif
-  { "defaultpage", 	&opt.default_page,      cmd_string},
+  { "defaultpage", 	&opt.default_page,      cmd_string },
   { "deleteafter",      &opt.delete_after,      cmd_boolean },
   { "dirprefix",        &opt.dir_prefix,        cmd_directory },
   { "dirstruct",        NULL,                   cmd_spec_dirstruct },
@@ -180,6 +194,9 @@ static const struct {
   { "httppasswd",       &opt.http_passwd,       cmd_string }, /* deprecated */
   { "httppassword",     &opt.http_passwd,       cmd_string },
   { "httpproxy",        &opt.http_proxy,        cmd_string },
+#ifdef HAVE_SSL
+  { "httpsonly",        &opt.https_only,        cmd_boolean },
+#endif
   { "httpsproxy",       &opt.https_proxy,       cmd_string },
   { "httpuser",         &opt.http_user,         cmd_string },
   { "ignorecase",       &opt.ignore_case,       cmd_boolean },
@@ -199,6 +216,7 @@ static const struct {
   { "logfile",          &opt.lfilename,         cmd_file },
   { "login",            &opt.ftp_user,          cmd_string },/* deprecated*/
   { "maxredirect",      &opt.max_redirect,      cmd_number },
+  { "method",           &opt.method,            cmd_string_uppercase },
   { "mirror",           NULL,                   cmd_spec_mirror },
   { "netrc",            &opt.netrc,             cmd_boolean },
   { "noclobber",        &opt.noclobber,         cmd_boolean },
@@ -213,7 +231,7 @@ static const struct {
   { "postdata",         &opt.post_data,         cmd_string },
   { "postfile",         &opt.post_file_name,    cmd_file },
   { "preferfamily",     NULL,                   cmd_spec_prefer_family },
-  { "preservepermissions", &opt.preserve_perm,  cmd_boolean },/* deprecated */
+  { "preservepermissions", &opt.preserve_perm,  cmd_boolean },
 #ifdef HAVE_SSL
   { "privatekey",       &opt.private_key,       cmd_file },
   { "privatekeytype",   &opt.private_key_type,  cmd_cert_type },
@@ -233,10 +251,13 @@ static const struct {
   { "reclevel",         &opt.reclevel,          cmd_number_inf },
   { "recursive",        NULL,                   cmd_spec_recursive },
   { "referer",          &opt.referer,           cmd_string },
+  { "regextype",        &opt.regex_type,        cmd_spec_regex_type },
   { "reject",           &opt.rejects,           cmd_vector },
+  { "rejectregex",      &opt.rejectregex_s,     cmd_string },
   { "relativeonly",     &opt.relative_only,     cmd_boolean },
   { "remoteencoding",   &opt.encoding_remote,   cmd_string },
   { "removelisting",    &opt.remove_listing,    cmd_boolean },
+  { "reportspeed",             &opt.report_bps, cmd_spec_report_speed},
   { "restrictfilenames", NULL,                  cmd_spec_restrict_file_names },
   { "retrsymlinks",     &opt.retr_symlinks,     cmd_boolean },
   { "retryconnrefused", &opt.retry_connrefused, cmd_boolean },
@@ -263,6 +284,17 @@ static const struct {
   { "verbose",          NULL,                   cmd_spec_verbose },
   { "wait",             &opt.wait,              cmd_time },
   { "waitretry",        &opt.waitretry,         cmd_time },
+  { "warccdx",          &opt.warc_cdx_enabled,  cmd_boolean },
+  { "warccdxdedup",     &opt.warc_cdx_dedup_filename,  cmd_file },
+#ifdef HAVE_LIBZ
+  { "warccompression",  &opt.warc_compression_enabled, cmd_boolean },
+#endif
+  { "warcdigests",      &opt.warc_digests_enabled, cmd_boolean },
+  { "warcfile",         &opt.warc_filename,     cmd_file },
+  { "warcheader",       NULL,                   cmd_spec_warc_header },
+  { "warckeeplog",      &opt.warc_keep_log,     cmd_boolean },
+  { "warcmaxsize",      &opt.warc_maxsize,      cmd_bytes },
+  { "warctempdir",      &opt.warc_tempdir,      cmd_directory },
 #ifdef USE_WATT32
   { "wdebug",           &opt.wdebug,            cmd_boolean },
 #endif
@@ -347,6 +379,8 @@ defaults (void)
   opt.restrict_files_nonascii = false;
   opt.restrict_files_case = restrict_no_case_restriction;
 
+  opt.regex_type = regex_type_posix;
+
   opt.max_redirect = 20;
 
   opt.waitretry = 10;
@@ -361,6 +395,18 @@ defaults (void)
 
   opt.useservertimestamps = true;
   opt.show_all_dns_entries = false;
+
+  opt.warc_maxsize = 0; /* 1024 * 1024 * 1024; */
+#ifdef HAVE_LIBZ
+  opt.warc_compression_enabled = true;
+#else
+  opt.warc_compression_enabled = false;
+#endif
+  opt.warc_digests_enabled = true;
+  opt.warc_cdx_enabled = false;
+  opt.warc_cdx_dedup_filename = NULL;
+  opt.warc_tempdir = NULL;
+  opt.warc_keep_log = true;
 }
 
 /* Return the user's home directory (strdup-ed), or NULL if none is
@@ -416,8 +462,7 @@ home_dir (void)
     }
 
   ret = home ? xstrdup (home) : NULL;
-  if (buf)
-    free (buf);
+  free (buf);
 
   return ret;
 }
@@ -443,7 +488,7 @@ wgetrc_env_file_name (void)
   return NULL;
 }
 
-/* Check for the existance of '$HOME/.wgetrc' and return it's path
+/* Check for the existance of '$HOME/.wgetrc' and return its path
    if it exists and is set.  */
 char *
 wgetrc_user_file_name (void)
@@ -531,7 +576,8 @@ bool
 run_wgetrc (const char *file)
 {
   FILE *fp;
-  char *line;
+  char *line = NULL;
+  size_t bufsize = 0;
   int ln;
   int errcnt = 0;
 
@@ -543,7 +589,7 @@ run_wgetrc (const char *file)
       return true;                      /* not a fatal error */
     }
   ln = 1;
-  while ((line = read_whole_line (fp)) != NULL)
+  while (getline (&line, &bufsize, fp) > 0)
     {
       char *com = NULL, *val = NULL;
       int comind;
@@ -577,9 +623,9 @@ run_wgetrc (const char *file)
         }
       xfree_null (com);
       xfree_null (val);
-      xfree (line);
       ++ln;
     }
+  xfree (line);
   fclose (fp);
 
   return errcnt == 0;
@@ -597,21 +643,34 @@ initialize (void)
      variable has been set. For internal testing purposes only!  */
   env_sysrc = getenv ("SYSTEM_WGETRC");
   if (env_sysrc && file_exists_p (env_sysrc))
-    ok &= run_wgetrc (env_sysrc);
+    {
+      ok &= run_wgetrc (env_sysrc);
+      /* If there are any problems parsing the system wgetrc file, tell
+         the user and exit */
+      if (! ok)
+        {
+          fprintf (stderr, _("\
+Parsing system wgetrc file (env SYSTEM_WGETRC) failed.  Please check\n\
+'%s',\n\
+or specify a different file using --config.\n"), env_sysrc);
+          exit (2);
+        }
+    }
   /* Otherwise, if SYSTEM_WGETRC is defined, use it.  */
 #ifdef SYSTEM_WGETRC
   else if (file_exists_p (SYSTEM_WGETRC))
     ok &= run_wgetrc (SYSTEM_WGETRC);
-#endif
   /* If there are any problems parsing the system wgetrc file, tell
      the user and exit */
   if (! ok)
     {
       fprintf (stderr, _("\
-Parsing system wgetrc file failed, please check '%s'.           \
-Or specify a different file using --config\n"), SYSTEM_WGETRC);
+Parsing system wgetrc file failed.  Please check\n\
+'%s',\n\
+or specify a different file using --config.\n"), SYSTEM_WGETRC);
       exit (2);
     }
+#endif
   /* Override it with your own, if one exists.  */
   file = wgetrc_file_name ();
   if (!file)
@@ -904,8 +963,25 @@ cmd_string (const char *com, const char *val, void *place)
   return true;
 }
 
+/* Like cmd_string but ensure the string is upper case.  */
+static bool
+cmd_string_uppercase (const char *com, const char *val, void *place)
+{
+  char *q, **pstring;
+  pstring = (char **)place;
+  xfree_null (*pstring);
 
-/* Like the above, but handles tilde-expansion when reading a user's
+  *pstring = xmalloc (strlen (val) + 1);
+
+  for (q = *pstring; *val; val++, q++)
+    *q = c_toupper (*val);
+
+  *q = '\0';
+  return true;
+}
+
+
+/* Like cmd_string, but handles tilde-expansion when reading a user's
    `.wgetrc'.  In that case, and if VAL begins with `~', the tilde
    gets expanded to the user's home directory.  */
 static bool
@@ -1222,6 +1298,27 @@ cmd_spec_header (const char *com, const char *val, void *place_ignored)
 }
 
 static bool
+cmd_spec_warc_header (const char *com, const char *val, void *place_ignored)
+{
+  /* Empty value means reset the list of headers. */
+  if (*val == '\0')
+    {
+      free_vec (opt.warc_user_headers);
+      opt.warc_user_headers = NULL;
+      return true;
+    }
+
+  if (!check_user_specified_header (val))
+    {
+      fprintf (stderr, _("%s: %s: Invalid WARC header %s.\n"),
+               exec_name, com, quote (val));
+      return false;
+    }
+  opt.warc_user_headers = vec_append (opt.warc_user_headers, val);
+  return true;
+}
+
+static bool
 cmd_spec_htmlify (const char *com, const char *val, void *place_ignored)
 {
   int flag = cmd_boolean (com, val, &opt.htmlify);
@@ -1308,6 +1405,25 @@ cmd_spec_recursive (const char *com, const char *val, void *place_ignored)
   return true;
 }
 
+/* Validate --regex-type and set the choice.  */
+
+static bool
+cmd_spec_regex_type (const char *com, const char *val, void *place_ignored)
+{
+  static const struct decode_item choices[] = {
+    { "posix", regex_type_posix },
+#ifdef HAVE_LIBPCRE
+    { "pcre",  regex_type_pcre },
+#endif
+  };
+  int regex_type = regex_type_posix;
+  int ok = decode_string (val, choices, countof (choices), &regex_type);
+  if (!ok)
+    fprintf (stderr, _("%s: %s: Invalid value %s.\n"), exec_name, com, quote (val));
+  opt.regex_type = regex_type;
+  return ok;
+}
+
 static bool
 cmd_spec_restrict_file_names (const char *com, const char *val, void *place_ignored)
 {
@@ -1362,6 +1478,15 @@ cmd_spec_restrict_file_names (const char *com, const char *val, void *place_igno
   return true;
 }
 
+static bool
+cmd_spec_report_speed (const char *com, const char *val, void *place_ignored)
+{
+  opt.report_bps = strcasecmp (val, "bits") == 0;
+  if (!opt.report_bps)
+    fprintf (stderr, _("%s: %s: Invalid value %s.\n"), exec_name, com, quote (val));
+  return opt.report_bps;
+}
+
 #ifdef HAVE_SSL
 static bool
 cmd_spec_secure_protocol (const char *com, const char *val, void *place)
@@ -1371,6 +1496,7 @@ cmd_spec_secure_protocol (const char *com, const char *val, void *place)
     { "sslv2", secure_protocol_sslv2 },
     { "sslv3", secure_protocol_sslv3 },
     { "tlsv1", secure_protocol_tlsv1 },
+    { "pfs", secure_protocol_pfs },
   };
   int ok = decode_string (val, choices, countof (choices), place);
   if (!ok)
@@ -1568,6 +1694,7 @@ decode_string (const char *val, const struct decode_item *items, int itemcount,
 
 
 void cleanup_html_url (void);
+void spider_cleanup (void);
 
 
 /* Free the memory allocated by global variables.  */
@@ -1576,8 +1703,16 @@ cleanup (void)
 {
   /* Free external resources, close files, etc. */
 
+  /* Close WARC file. */
+  if (opt.warc_filename != 0)
+    warc_close ();
+
+  log_close ();
+
   if (output_stream)
-    fclose (output_stream);
+    if (fclose (output_stream) == EOF)
+      inform_exit_status (CLOSEFAILED);
+
   /* No need to check for error because Wget flushes its output (and
      checks for errors) after any data arrives.  */
 
@@ -1594,8 +1729,12 @@ cleanup (void)
   res_cleanup ();
   http_cleanup ();
   cleanup_html_url ();
+  spider_cleanup ();
   host_cleanup ();
   log_cleanup ();
+
+  for (i = 0; i < nurl; i++)
+    xfree (url[i]);
 
   {
     extern acc_t *netrc_list;
@@ -1625,6 +1764,7 @@ cleanup (void)
   xfree_null (opt.http_user);
   xfree_null (opt.http_passwd);
   free_vec (opt.user_headers);
+  free_vec (opt.warc_user_headers);
 # ifdef HAVE_SSL
   xfree_null (opt.cert_file);
   xfree_null (opt.private_key);
@@ -1639,6 +1779,7 @@ cleanup (void)
   xfree_null (opt.user);
   xfree_null (opt.passwd);
   xfree_null (opt.base_href);
+  xfree_null (opt.method);
 
 #endif /* DEBUG_MALLOC */
 }

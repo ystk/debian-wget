@@ -391,6 +391,9 @@ parse_set_cookie (const char *set_cookie, bool silent)
             goto error;
           BOUNDED_TO_ALLOCA (value.b, value.e, value_copy);
 
+          /* Check if expiration spec is valid.
+             If not, assume default (cookie doesn't expire, but valid only for
+	     this session.) */
           expires = http_atotm (value_copy);
           if (expires != (time_t) -1)
             {
@@ -402,10 +405,6 @@ parse_set_cookie (const char *set_cookie, bool silent)
               if (cookie->expiry_time < cookies_now)
                 cookie->discard_requested = 1;
             }
-          else
-            /* Error in expiration spec.  Assume default (cookie doesn't
-               expire, but valid only for this session.)  */
-            ;
         }
       else if (TOKEN_IS (name, "max-age"))
         {
@@ -433,9 +432,7 @@ parse_set_cookie (const char *set_cookie, bool silent)
           /* ignore value completely */
           cookie->secure = 1;
         }
-      else
-        /* Ignore unrecognized attribute. */
-        ;
+      /* else: Ignore unrecognized attribute. */
     }
   if (*ptr)
     /* extract_param has encountered a syntax error */
@@ -676,9 +673,6 @@ cookie_handle_set_cookie (struct cookie_jar *jar,
 
   if (!cookie->domain)
     {
-    copy_domain:
-      /* If the domain was not provided, we use the one we're talking
-         to, and set exact match.  */
       cookie->domain = xstrdup (host);
       cookie->domain_exact = 1;
       /* Set the port, but only if it's non-default. */
@@ -690,11 +684,12 @@ cookie_handle_set_cookie (struct cookie_jar *jar,
       if (!check_domain_match (cookie->domain, host))
         {
           logprintf (LOG_NOTQUIET,
-                     _("Cookie coming from %s attempted to set domain to %s\n"),
-                     quotearg_style (escape_quoting_style, host),
+                     _("Cookie coming from %s attempted to set domain to "),
+                     quotearg_style (escape_quoting_style, host));
+          logprintf (LOG_NOTQUIET,
+                     _("%s\n"),
                      quotearg_style (escape_quoting_style, cookie->domain));
-          xfree (cookie->domain);
-          goto copy_domain;
+          cookie->discard_requested = true;
         }
     }
 
@@ -1134,7 +1129,9 @@ domain_port (const char *domain_b, const char *domain_e,
 void
 cookie_jar_load (struct cookie_jar *jar, const char *file)
 {
-  char *line;
+  char *line = NULL;
+  size_t bufsize = 0;
+
   FILE *fp = fopen (file, "r");
   if (!fp)
     {
@@ -1142,9 +1139,10 @@ cookie_jar_load (struct cookie_jar *jar, const char *file)
                  quote (file), strerror (errno));
       return;
     }
+
   cookies_now = time (NULL);
 
-  for (; ((line = read_whole_line (fp)) != NULL); xfree (line))
+  while (getline (&line, &bufsize, fp) > 0)
     {
       struct cookie *cookie;
       char *p = line;
@@ -1238,6 +1236,8 @@ cookie_jar_load (struct cookie_jar *jar, const char *file)
     abort_cookie:
       delete_cookie (cookie);
     }
+
+  xfree(line);
   fclose (fp);
 }
 

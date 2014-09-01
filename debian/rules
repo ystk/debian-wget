@@ -12,10 +12,9 @@ else
 confflags= --build $(DEB_BUILD_GNU_TYPE)
 endif
 
-CFLAGS = `dpkg-buildflags --get CFLAGS`
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
 CFLAGS += -DNO_SSLv2 -D_FILE_OFFSET_BITS=64 -g -Wall
-LDFLAGS = `dpkg-buildflags --get LDFLAGS`
-CPPFLAGS = `dpkg-buildflags --get CPPFLAGS`
 
 config.status: 
 	dh_testdir
@@ -28,7 +27,7 @@ config.status:
 			--sysconfdir=/etc \
 			--enable-ipv6 \
 			--with-ssl \
-			--with-libidn $(confflags)
+			--with-libidn=/usr $(confflags)
 
 	touch configure-stamp
 
@@ -62,7 +61,7 @@ clean:
 	    doc/sample.wgetrc.munged_for_texi_inclusion
 	rm -f config.guess config.sub
 
-	dh_clean
+	dh_prep
 
 install: build
 	dh_testdir

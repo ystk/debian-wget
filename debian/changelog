@@ -1,3 +1,107 @@
+wget (1.15-1) unstable; urgency=medium
+
+  * new upstream release from 2014-01-19
+      Wget: fails with long file names in URLs Closes: #672131
+      Wget omits Host header for CONNECT Closes: #699337
+      Wget: Inaccurate catalan translation Closes: #697081
+      Cannot write to ... (Success) Closes: #716938
+      Regression: write error on wget -c for already fully retrieved file
+      Closes: #696700
+      wget: NTLM not supported Closes: #718262
+      wget --no-check-certificate does check certificate in certain conditions
+      Closes: #686837
+  * debian/control updated Standard-Version; no changes needed
+
+ -- Noël Köthe <noel@debian.org>  Mon, 20 Jan 2014 20:17:54 +0100
+
+wget (1.14.96.38327-2) experimental; urgency=low
+
+  * debian/rules fix configure option --with-libidn Closes: #728735
+
+ -- Noël Köthe <noel@debian.org>  Fri, 08 Nov 2013 12:58:42 +0100
+
+wget (1.14.96.38327-1) experimental; urgency=low
+
+  * 1.15 alpha version from 2013-11-02
+    - removed patches which are included now upstream:
+      wget-doc-fixitemx2item.patch
+      wget-doc-remove2.nv.patch
+      wget-doc-texi2pod_fixperl5.18change.patch
+    - included fixes for
+      Wget: fails with long file names in URLs Closes: #672131
+      Wget omits Host header for CONNECT Closes: #699337
+      Wget: Inaccurate catalan translation Closes: #697081
+      Cannot write to ... (Success) Closes: #716938
+      Regression: write error on wget -c for already fully retrieved file
+      Closes: #696700
+      wget: NTLM not supported Closes: #718262
+      wget --no-check-certificate does check certificate in certain conditions
+      Closes: #686837
+  * debian/control add Recommends ca-certificates to get
+    https URLs working. Closes: #712540
+  * debian/rules fix lintian warning dh-clean-k-is-deprecated
+
+ -- Noël Köthe <noel@debian.org>  Fri, 08 Nov 2013 08:14:32 +0100
+
+wget (1.14-4) unstable; urgency=low
+
+  * fix manpage building error "Expected text after =item, not a number"
+    with texi2man.pl patch from upstream git:
+    http://git.savannah.gnu.org/cgit/wget.git/diff/?id=7f43748544f26008d0dd337704f02a6ed3200aaf
+    Closes: #724191
+
+ -- Noël Köthe <noel@debian.org>  Mon, 23 Sep 2013 12:37:59 +0200
+
+wget (1.14-3) experimental; urgency=low
+
+  * build with GNUTLS 3.2 (libgnutls28-dev) to fix some https problems.
+    closes: #707555, #652480
+  * debian/watch from bartm added. Thank you!
+  * debian/control,rules switch to compact 9 and using system buildflags
+
+ -- Noël Köthe <noel@debian.org>  Tue, 13 Aug 2013 15:35:05 +0200
+
+wget (1.14-2) unstable; urgency=low
+
+  * fix changed Texinfo 5 itemx vs item behaviour
+    with patch wget-doc-fixitemx2item.patch
+    closes: #711028
+  * remove second -nv in manpage wget-doc-remove2.nv.patch
+    closes: #704085
+  * debian/control updated Standards-Version, no changes needed
+
+ -- Noël Köthe <noel@debian.org>  Tue, 04 Jun 2013 10:58:22 +0200
+
+wget (1.14-1) unstable; urgency=low
+
+  * new upstream release from 2012-08-07
+    - Add support for content-on-error. It allows to store the HTTP
+      payload on 4xx or 5xx errors. closes: #247985
+    - Fix a memory leak problem in the GNU TLS backend. closes: #642563
+    - Add support for TLS Server Name Indication. closes: #653267
+
+ -- Noël Köthe <noel@debian.org>  Tue, 07 Aug 2012 11:09:50 +0200
+
+wget (1.13.4.79-1) experimental; urgency=low
+
+  * new alpha version 1.13.4.79-22f0 from 2012-07-14
+  * the former alpha problem "write error: Inappropriate ioctl
+    for device" with -O -  closes: #681394
+
+ -- Noël Köthe <noel@debian.org>  Mon, 16 Jul 2012 21:21:07 +0200
+
+wget (1.13.4.59-1) experimental; urgency=low
+
+  * alpha version 1.13.4.59-2b1dd from 2012-05-26
+  * debian/control using libuuid (warc.c) Thanks Tim for the hint.
+    closes: Bug#666160
+  * debian/ control updated Standard-Version, no changes needed
+  * removed upstream included patches:
+    - wget-fr.po-spelling-correction
+    - gnutls-client-cert
+
+ -- Noël Köthe <noel@debian.org>  Mon, 09 Jul 2012 17:12:56 +0200
+
 wget (1.13.4-3) unstable; urgency=low
 
   [ Daniel Kahn Gillmor ]
