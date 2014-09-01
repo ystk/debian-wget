@@ -1,7 +1,5 @@
-/* quote.c - quote arguments for output
-
-   Copyright (C) 1998-2001, 2003, 2005-2006, 2009-2011 Free Software
-   Foundation, Inc.
+/* An ftell() function that works around platform bugs.
+   Copyright (C) 2007-2013 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,25 +14,24 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-/* Written by Paul Eggert <eggert@twinsun.com> */
-
 #include <config.h>
 
-#include "quotearg.h"
-#include "quote.h"
+/* Specification.  */
+#include <stdio.h>
 
-/* Return an unambiguous printable representation of NAME,
-   allocated in slot N, suitable for diagnostics.  */
-char const *
-quote_n (int n, char const *name)
-{
-  return quotearg_n_style (n, locale_quoting_style, name);
-}
+#include <errno.h>
+#include <limits.h>
 
-/* Return an unambiguous printable representation of NAME,
-   suitable for diagnostics.  */
-char const *
-quote (char const *name)
+long
+ftell (FILE *fp)
 {
-  return quote_n (0, name);
+  /* Use the replacement ftello function with all its workarounds.  */
+  off_t offset = ftello (fp);
+  if (LONG_MIN <= offset && offset <= LONG_MAX)
+    return /* (long) */ offset;
+  else
+    {
+      errno = EOVERFLOW;
+      return -1;
+    }
 }

@@ -28,6 +28,8 @@ Corresponding Source for a non-source form of such a combination
 shall include the source code for the parts of OpenSSL used as well
 as that of the covered work.  */
 
+#include "wget.h"
+
 #include <stdio.h>
 
 #include "test.h"
@@ -45,6 +47,8 @@ const char *test_path_simplify ();
 const char *test_append_uri_pathel();
 const char *test_are_urls_equal();
 const char *test_is_robots_txt_url();
+
+const char *program_argstring = "TEST";
 
 int tests_run;
 

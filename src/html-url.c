@@ -1,6 +1,6 @@
 /* Collect URLs from HTML source.
    Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+   2007, 2008, 2009, 2010, 2011, 2012 Free Software Foundation, Inc.
 
 This file is part of GNU Wget.
 
@@ -79,7 +79,10 @@ enum {
   TAG_SCRIPT,
   TAG_TABLE,
   TAG_TD,
-  TAG_TH
+  TAG_TH,
+  TAG_VIDEO,
+  TAG_AUDIO,
+  TAG_SOURCE
 };
 
 /* The list of known tags and functions used for handling them.  Most
@@ -110,7 +113,10 @@ static struct known_tag {
   { TAG_SCRIPT,  "script",      tag_find_urls },
   { TAG_TABLE,   "table",       tag_find_urls },
   { TAG_TD,      "td",          tag_find_urls },
-  { TAG_TH,      "th",          tag_find_urls }
+  { TAG_TH,      "th",          tag_find_urls },
+  { TAG_VIDEO,   "video",       tag_find_urls },
+  { TAG_AUDIO,   "audio",       tag_find_urls },
+  { TAG_SOURCE,  "source",      tag_find_urls }
 };
 
 /* tag_url_attributes documents which attributes of which tags contain
@@ -157,7 +163,12 @@ static struct {
   { TAG_SCRIPT,         "src",          ATTR_INLINE },
   { TAG_TABLE,          "background",   ATTR_INLINE },
   { TAG_TD,             "background",   ATTR_INLINE },
-  { TAG_TH,             "background",   ATTR_INLINE }
+  { TAG_TH,             "background",   ATTR_INLINE },
+  { TAG_VIDEO,          "src",          ATTR_INLINE },
+  { TAG_VIDEO,          "poster",       ATTR_INLINE },
+  { TAG_AUDIO,          "src",          ATTR_INLINE },
+  { TAG_AUDIO,          "poster",       ATTR_INLINE },
+  { TAG_SOURCE,         "src",          ATTR_INLINE }
 };
 
 /* The lists of interesting tags and attributes are built dynamically,
@@ -273,6 +284,10 @@ append_url (const char *link_uri, int position, int size,
   const char *base = ctx->base ? ctx->base : ctx->parent_base;
   struct url *url;
 
+  struct iri *iri = iri_new ();
+  set_uri_encoding (iri, opt.locale, true);
+  iri->utf8_encode = true;
+
   if (!base)
     {
       DEBUGP (("%s: no base, merge will use \"%s\".\n",
@@ -290,7 +305,7 @@ append_url (const char *link_uri, int position, int size,
           return NULL;
         }
 
-      url = url_parse (link_uri, NULL, NULL, false);
+      url = url_parse (link_uri, NULL, iri, false);
       if (!url)
         {
           DEBUGP (("%s: link \"%s\" doesn't parse.\n",
@@ -312,7 +327,7 @@ append_url (const char *link_uri, int position, int size,
                quote_n (2, link_uri),
                quotearg_n_style (3, escape_quoting_style, complete_uri)));
 
-      url = url_parse (complete_uri, NULL, NULL, false);
+      url = url_parse (complete_uri, NULL, iri, false);
       if (!url)
         {
           DEBUGP (("%s: merged link \"%s\" doesn't parse.\n",
@@ -322,6 +337,8 @@ append_url (const char *link_uri, int position, int size,
         }
       xfree (complete_uri);
     }
+
+  iri_free (iri);
 
   DEBUGP (("appending %s to urlpos.\n", quote (url->url)));
 
@@ -675,8 +692,9 @@ collect_tags_mapper (struct taginfo *tag, void *arg)
 
   check_style_attr (tag, ctx);
 
-  if (tag->end_tag_p && (0 == strcasecmp (tag->name, "style")) &&
-      tag->contents_begin && tag->contents_end)
+  if (tag->end_tag_p && (0 == strcasecmp (tag->name, "style"))
+      && tag->contents_begin && tag->contents_end
+      && tag->contents_begin <= tag->contents_end)
   {
     /* parse contents */
     get_urls_css (ctx, tag->contents_begin - ctx->text,
@@ -801,6 +819,13 @@ get_urls_file (const char *file)
           char *merged = uri_merge (opt.base_href, url_text);
           xfree (url_text);
           url_text = merged;
+        }
+
+      char *new_url = rewrite_shorthand_url (url_text);
+      if (new_url)
+        {
+          xfree (url_text);
+          url_text = new_url;
         }
 
       url = url_parse (url_text, &up_error_code, NULL, false);

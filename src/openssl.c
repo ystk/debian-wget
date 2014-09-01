@@ -1,6 +1,6 @@
 /* SSL support via OpenSSL library.
    Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
-   2009, 2010, 2011 Free Software Foundation, Inc.
+   2009, 2010, 2011, 2012 Free Software Foundation, Inc.
    Originally contributed by Christian Fraenkel.
 
 This file is part of GNU Wget.
@@ -159,7 +159,7 @@ key_type_to_ssl_type (enum keyfile_type type)
    Returns true on success, false otherwise.  */
 
 bool
-ssl_init ()
+ssl_init (void)
 {
   SSL_METHOD const *meth;
 
@@ -194,6 +194,7 @@ ssl_init ()
     case secure_protocol_sslv3:
       meth = SSLv3_client_method ();
       break;
+    case secure_protocol_pfs:
     case secure_protocol_tlsv1:
       meth = TLSv1_client_method ();
       break;
@@ -201,9 +202,17 @@ ssl_init ()
       abort ();
     }
 
-  ssl_ctx = SSL_CTX_new (meth);
+  /* The type cast below accommodates older OpenSSL versions (0.9.8)
+     where SSL_CTX_new() is declared without a "const" argument. */
+  ssl_ctx = SSL_CTX_new ((SSL_METHOD *)meth);
   if (!ssl_ctx)
     goto error;
+
+  /* OpenSSL ciphers: https://www.openssl.org/docs/apps/ciphers.html
+   * Since we want a good protection, we also use HIGH (that excludes MD4 ciphers and some more)
+   */
+  if (opt.secure_protocol == secure_protocol_pfs)
+    SSL_CTX_set_cipher_list (ssl_ctx, "HIGH:MEDIUM:!RC4:!SRP:!PSK:!RSA:!aNULL@STRENGTH");
 
   SSL_CTX_set_default_verify_paths (ssl_ctx);
   SSL_CTX_load_verify_locations (ssl_ctx, opt.ca_cert, opt.ca_directory);
@@ -249,24 +258,50 @@ ssl_init ()
   return false;
 }
 
-struct openssl_transport_context {
+struct openssl_transport_context
+{
   SSL *conn;                    /* SSL connection handle */
   char *last_error;             /* last error printed with openssl_errstr */
 };
 
+struct openssl_read_args
+{
+  int fd;
+  struct openssl_transport_context *ctx;
+  char *buf;
+  int bufsize;
+  int retval;
+};
+
+static void openssl_read_callback(void *arg)
+{
+  struct openssl_read_args *args = (struct openssl_read_args *) arg;
+  struct openssl_transport_context *ctx = args->ctx;
+  SSL *conn = ctx->conn;
+  char *buf = args->buf;
+  int bufsize = args->bufsize;
+  int ret;
+
+  do
+    ret = SSL_read (conn, buf, bufsize);
+  while (ret == -1 && SSL_get_error (conn, ret) == SSL_ERROR_SYSCALL
+         && errno == EINTR);
+  args->retval = ret;
+}
+
 static int
 openssl_read (int fd, char *buf, int bufsize, void *arg)
 {
-  int ret;
-  struct openssl_transport_context *ctx = arg;
-  SSL *conn = ctx->conn;
-  do
-    ret = SSL_read (conn, buf, bufsize);
-  while (ret == -1
-         && SSL_get_error (conn, ret) == SSL_ERROR_SYSCALL
-         && errno == EINTR);
+  struct openssl_read_args args;
+  args.fd = fd;
+  args.buf = buf;
+  args.bufsize = bufsize;
+  args.ctx = (struct openssl_transport_context*) arg;
 
-  return ret;
+  if (run_with_timeout(opt.read_timeout, openssl_read_callback, &args)) {
+    return -1;
+  }
+  return args.retval;
 }
 
 static int
@@ -384,6 +419,19 @@ static struct transport_implementation openssl_transport = {
   openssl_peek, openssl_errstr, openssl_close
 };
 
+struct scwt_context
+{
+  SSL *ssl;
+  int result;
+};
+
+static void
+ssl_connect_with_timeout_callback(void *arg)
+{
+  struct scwt_context *ctx = (struct scwt_context *)arg;
+  ctx->result = SSL_connect(ctx->ssl);
+}
+
 /* Perform the SSL handshake on file descriptor FD, which is assumed
    to be connected to an SSL server.  The SSL handle provided by
    OpenSSL is registered with the file descriptor FD using
@@ -393,9 +441,10 @@ static struct transport_implementation openssl_transport = {
    Returns true on success, false on failure.  */
 
 bool
-ssl_connect_wget (int fd)
+ssl_connect_wget (int fd, const char *hostname)
 {
   SSL *conn;
+  struct scwt_context scwt_ctx;
   struct openssl_transport_context *ctx;
 
   DEBUGP (("Initiating SSL handshake.\n"));
@@ -404,13 +453,33 @@ ssl_connect_wget (int fd)
   conn = SSL_new (ssl_ctx);
   if (!conn)
     goto error;
+#if OPENSSL_VERSION_NUMBER >= 0x0090806fL && !defined(OPENSSL_NO_TLSEXT)
+  /* If the SSL library was build with support for ServerNameIndication
+     then use it whenever we have a hostname.  If not, don't, ever. */
+  if (! is_valid_ip_address (hostname))
+    {
+      if (! SSL_set_tlsext_host_name (conn, hostname))
+	{
+	DEBUGP (("Failed to set TLS server-name indication."));
+	goto error;
+	}
+    }
+#endif
+
 #ifndef FD_TO_SOCKET
 # define FD_TO_SOCKET(X) (X)
 #endif
   if (!SSL_set_fd (conn, FD_TO_SOCKET (fd)))
     goto error;
   SSL_set_connect_state (conn);
-  if (SSL_connect (conn) <= 0 || conn->state != SSL_ST_OK)
+
+  scwt_ctx.ssl = conn;
+  if (run_with_timeout(opt.read_timeout, ssl_connect_with_timeout_callback,
+                       &scwt_ctx)) {
+    DEBUGP (("SSL handshake timed out.\n"));
+    goto timeout;
+  }
+  if (scwt_ctx.result <= 0 || conn->state != SSL_ST_OK)
     goto error;
 
   ctx = xnew0 (struct openssl_transport_context);
@@ -426,6 +495,7 @@ ssl_connect_wget (int fd)
  error:
   DEBUGP (("SSL handshake failed.\n"));
   print_errors ();
+ timeout:
   if (conn)
     SSL_free (conn);
   return false;
