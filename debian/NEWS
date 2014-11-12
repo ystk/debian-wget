@@ -1,0 +1,18 @@
+wget (1.12-2.1+deb6u1) squeeze-lts; urgency=high
+
+  From 18b0979357ed7dc4e11d4f2b1d7e0f5932d82aa7 Mon Sep 17 00:00:00 2001
+  From: Darshit Shah <darnir@gmail.com>
+  Date: Sun, 07 Sep 2014 19:11:17 +0000
+  Subject: CVE-2014-4877: Arbitrary Symlink Access
+  
+  Wget was susceptible to a symlink attack which could create arbitrary
+  files, directories or symbolic links and set their permissions when
+  retrieving a directory recursively through FTP. This commit changes the
+  default settings in Wget such that Wget no longer creates local symbolic
+  links, but rather traverses them and retrieves the pointed-to file in
+  such a retrieval.
+  
+  The old behaviour can be attained by passing the --retr-symlinks=no
+  option to the Wget invokation command.
+
+ -- Thorsten Alteholz <debian@alteholz.de>  Wed, 29 Oct 2014 19:00:14 +0100

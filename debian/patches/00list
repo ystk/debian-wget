@@ -6,3 +6,4 @@ wget-infopod_generated_manpage.dpatch
 wget-de.po-remove-double-quote-signs
 wget-zh_CN.po-translation-correction
 CVE-2010-2252
+CVE-2014-4877

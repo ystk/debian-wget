@@ -56,6 +56,9 @@ clean-patched:
 
 	dh_clean
 
+unpatch:
+	echo "pbuilder seems to have problems removing the patches again!?"
+
 install: build
 	dh_testdir
 	dh_testroot
