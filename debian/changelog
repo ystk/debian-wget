@@ -1,3 +1,13 @@
+wget (1.16-1) unstable; urgency=medium
+
+  * new upstream release from 2014-10-27
+    - "Poodle" do not use SSLv3 except explicitely requested (CVE-2014-3566)
+  * debian/control: Public Suffix List cookie domain checking via libpsl
+    Closes: #766780
+  * debian/control: updated Standards-Version to 3.9.6 (no changes needed)
+
+ -- Noël Köthe <noel@debian.org>  Mon, 27 Oct 2014 11:29:29 +0100
+
 wget (1.15-1) unstable; urgency=medium
 
   * new upstream release from 2014-01-19
