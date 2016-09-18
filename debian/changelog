@@ -1,3 +1,15 @@
+wget (1.16-1+deb8u1) jessie; urgency=medium
+
+  * added patch for CVE-2016-4971. closes: #827003, #829130
+    By default, on server redirects to a FTP resource, use the original
+    URL to get the local file name. Close CVE-2016-4971.  This
+    introduces a backward-incompatibility for HTTP->FTP redirects and
+    any script that relies on the old  behaviour must use
+    --trust-server-names.
+  * debian/rules fixed clean target
+
+ -- Noël Köthe <noel@debian.org>  Mon, 04 Jul 2016 18:37:47 +0200
+
 wget (1.16-1) unstable; urgency=medium
 
   * new upstream release from 2014-10-27

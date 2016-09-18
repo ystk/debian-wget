@@ -61,12 +61,12 @@ clean:
 	    doc/sample.wgetrc.munged_for_texi_inclusion
 	rm -f config.guess config.sub
 
-	dh_prep
+	dh_clean
 
 install: build
 	dh_testdir
 	dh_testroot
-	dh_clean -k
+	dh_prep
 	dh_installdirs
 
 	# Add here commands to install the package into debian/wget.
