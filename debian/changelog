@@ -1,3 +1,9 @@
+wget (1.16-1+deb8u2) jessie; urgency=medium
+
+  * added upstream patch to fix CVE-2017-6508 closes: Bug#857073
+
+ -- Noël Köthe <noel@debian.org>  Sat, 18 Mar 2017 15:39:29 +0100
+
 wget (1.16-1+deb8u1) jessie; urgency=medium
 
   * added patch for CVE-2016-4971. closes: #827003, #829130

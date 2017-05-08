@@ -2,4 +2,4 @@ wget-doc-remove-usr-local-in-sample.wgetrc
 wget-doc-remove-usr-local-in-wget.texi
 wget-passive_ftp-default
 wget-CVE-2016-4971.patch 
-
+CVE-2017-6508.patch
