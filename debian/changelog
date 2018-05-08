@@ -1,3 +1,10 @@
+wget (1.16-1+deb8u5) jessie-security; urgency=high
+
+  * Non-maintainer upload by the Security Team.
+  * Fix cookie injection (CVE-2018-0494) (Closes: #898076)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 06 May 2018 21:24:51 +0200
+
 wget (1.16-1+deb8u4) jessie-security; urgency=medium
 
   * CVE-2017-13089 / CVE-2017-13090
