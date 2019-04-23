@@ -42,6 +42,9 @@ build-stamp: config.status
 
 	# Add here commands to compile the package.
 	$(MAKE)
+	#FOR TESTING: -$(MAKE) check
+	#FOR TESTING: -cat tests/test-suite.log
+	#FOR TESTING: add his to build-depends: , libhttp-daemon-perl, libio-socket-ssl-perl
 	#/usr/bin/docbook-to-man debian/wget.sgml > wget.1
 
 	cd po; make wget.pot
