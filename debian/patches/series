@@ -11,3 +11,5 @@ CVE-2019-5953-1.patch
 CVE-2019-5953-2.patch
 
 CVE-2016-7098.patch
+
+0001-Properly-re-implement-userinfo-parsing-rfc2396.patch
